@@ -30,8 +30,8 @@ import com.alibaba.cloud.ai.dashscope.common.ErrorCodeEnum;
 import com.alibaba.cloud.ai.dashscope.rag.context.DocumentProcessContext;
 import com.alibaba.cloud.ai.dashscope.rag.exception.DashScopeDocumentException;
 import com.alibaba.cloud.ai.dashscope.rag.exception.DocumentParseTimeoutException;
+import com.alibaba.cloud.ai.dashscope.rag.handler.DefaultFileStatusHandler;
 import com.alibaba.cloud.ai.dashscope.rag.handler.FileStatusHandler;
-import com.alibaba.cloud.ai.dashscope.rag.handler.FileStatusHandlerFactory;
 import com.alibaba.cloud.ai.dashscope.rag.handler.FileStatusResult;
 import com.alibaba.cloud.ai.dashscope.rag.validation.FileValidator;
 import com.alibaba.cloud.ai.dashscope.spec.DashScopeApiSpec;
@@ -53,9 +53,23 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
 
     private final DashScopeApi dashScopeApi;
     private final DashScopeDocumentCloudReaderOptions readerConfig;
+    private final DashScopeDocumentCloudReaderConfig clientConfig;
     private final File file;
-    private final FileStatusHandlerFactory statusHandlerFactory;
+    private final FileStatusHandler fileHandler;
     private final FileValidator fileValidator;
+
+    /**
+     * Constructor with default config
+     *
+     * @param filePath     file path to read
+     * @param dashScopeApi DashScope API client
+     * @param options      API options
+     */
+    public DashScopeDocumentCloudReader(String filePath,
+                                        DashScopeApi dashScopeApi,
+                                        DashScopeDocumentCloudReaderOptions options) {
+        this(filePath, dashScopeApi, options, new DashScopeDocumentCloudReaderConfig());
+    }
 
     /**
      * Constructor
@@ -63,10 +77,12 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
      * @param filePath     file path
      * @param dashScopeApi DashScope API client
      * @param readerConfig reader configuration (can be null, default config will be used)
+     * @param clientConfig client configuration (can be null, default config will be used)
      * @throws IllegalArgumentException when file does not exist or is not readable
      */
     public DashScopeDocumentCloudReader(String filePath, DashScopeApi dashScopeApi,
-                                        DashScopeDocumentCloudReaderOptions readerConfig) {
+                                        DashScopeDocumentCloudReaderOptions readerConfig,
+                                        DashScopeDocumentCloudReaderConfig clientConfig) {
         if (filePath == null || filePath.trim().isEmpty()) {
             throw new IllegalArgumentException("File path must not be null or empty");
         }
@@ -77,8 +93,9 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
         this.file = new File(filePath);
         this.dashScopeApi = dashScopeApi;
         this.readerConfig = readerConfig != null ? readerConfig : new DashScopeDocumentCloudReaderOptions();
-        this.statusHandlerFactory = new FileStatusHandlerFactory();
-        this.fileValidator = new FileValidator(this.readerConfig); // Initialize validator
+        this.clientConfig = clientConfig != null ? clientConfig : new DashScopeDocumentCloudReaderConfig();
+        this.fileHandler = new DefaultFileStatusHandler();
+        this.fileValidator = new FileValidator(this.clientConfig); // Initialize validator
 
         validateFile();
     }
@@ -194,7 +211,6 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
      * <ul>
      *   <li>PARSE_SUCCESS: Parsing succeeded, return</li>
      *   <li>PARSE_FAILED: Parsing failed, throw exception</li>
-     *   <li>PARSING/UPLOADED: Continue waiting</li>
      * </ul>
      *
      * @param context document processing context
@@ -207,7 +223,15 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
         long startTime = System.currentTimeMillis();
         int maxRetryCount = getMaxRetryCount();
 
+        // Initial wait before first query to allow server initialization
+        long initialWaitMillis = clientConfig.getInitialWaitMillis();
+        if (initialWaitMillis > 0) {
+            logger.debug("Initial wait {}ms before first status check", initialWaitMillis);
+            Thread.sleep(initialWaitMillis);
+        }
+
         while (tryCount < maxRetryCount) {
+
             // Query file status
             ResponseEntity<DashScopeApiSpec.CommonResponse<DashScopeApiSpec.QueryFileResponseData>>
                     response = queryFileStatus(context.getFileId());
@@ -235,8 +259,7 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
                          context.getFileId(), fileStatus, tryCount + 1, maxRetryCount);
 
             // Use Strategy Pattern to handle different statuses
-            FileStatusHandler handler = statusHandlerFactory.getHandler(fileStatus);
-            FileStatusResult result = handler.handle(context, response);
+            FileStatusResult result = fileHandler.handle(context, response);
 
             // Process result
             if (result.isCompleted()) {
@@ -318,17 +341,17 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
      */
     private long calculateRetryDelay(int attemptCount) {
         // If exponential backoff is enabled in config
-        if (readerConfig.isUseExponentialBackoff()) {
-            long baseDelay = readerConfig.getRetryIntervalMillis();
-            double multiplier = readerConfig.getBackoffMultiplier();
-            long maxDelay = readerConfig.getMaxRetryIntervalMillis();
+        if (clientConfig.isUseExponentialBackoff()) {
+            long baseDelay = clientConfig.getRetryIntervalMillis();
+            double multiplier = clientConfig.getBackoffMultiplier();
+            long maxDelay = clientConfig.getMaxRetryIntervalMillis();
 
             long delay = (long) (baseDelay * Math.pow(multiplier, attemptCount));
             return Math.min(delay, maxDelay);
         }
 
         // Default fixed delay
-        return readerConfig.getRetryIntervalMillis();
+        return clientConfig.getRetryIntervalMillis();
     }
 
     /**
@@ -336,8 +359,8 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
      */
     private int getMaxRetryCount() {
         // Use configured value if set, otherwise use default
-        return readerConfig.getMaxRetryAttempts() > 0
-                ? readerConfig.getMaxRetryAttempts()
+        return clientConfig.getMaxRetryAttempts() > 0
+                ? clientConfig.getMaxRetryAttempts()
                 : DashScopeApiConstants.MAX_TRY_COUNT;
     }
 

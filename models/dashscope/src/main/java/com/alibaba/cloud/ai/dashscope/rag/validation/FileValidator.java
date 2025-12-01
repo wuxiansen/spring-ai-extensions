@@ -17,7 +17,7 @@ package com.alibaba.cloud.ai.dashscope.rag.validation;
 
 import java.io.File;
 
-import com.alibaba.cloud.ai.dashscope.rag.DashScopeDocumentCloudReaderOptions;
+import com.alibaba.cloud.ai.dashscope.rag.DashScopeDocumentCloudReaderConfig;
 import com.alibaba.cloud.ai.dashscope.rag.exception.FileSizeExceededException;
 import com.alibaba.cloud.ai.dashscope.rag.exception.FileSizeTooSmallException;
 import com.alibaba.cloud.ai.dashscope.rag.util.FileSizeFormatter;
@@ -42,15 +42,15 @@ public class FileValidator {
 
     private static final Logger logger = LoggerFactory.getLogger(FileValidator.class);
 
-    private final DashScopeDocumentCloudReaderOptions options;
+    private final DashScopeDocumentCloudReaderConfig clientConfig;
 
     /**
      * Constructor
      *
-     * @param options reader configuration options
+     * @param clientConfig reader configuration
      */
-    public FileValidator(DashScopeDocumentCloudReaderOptions options) {
-        this.options = options;
+    public FileValidator(DashScopeDocumentCloudReaderConfig clientConfig) {
+        this.clientConfig = clientConfig;
     }
 
     /**
@@ -104,14 +104,14 @@ public class FileValidator {
      */
     private void validateFileSize(File file) {
         // Skip validation if disabled
-        if (!options.isEnableFileSizeValidation()) {
+        if (!clientConfig.isEnableFileSizeValidation()) {
             logger.debug("File size validation is disabled for file: {}", file.getName());
             return;
         }
 
         long fileSize = file.length();
-        long minSize = options.getMinFileSize();
-        long maxSize = options.getMaxFileSize();
+        long minSize = clientConfig.getMinFileSize();
+        long maxSize = clientConfig.getMaxFileSize();
 
         // Check minimum size
         if (fileSize < minSize) {
