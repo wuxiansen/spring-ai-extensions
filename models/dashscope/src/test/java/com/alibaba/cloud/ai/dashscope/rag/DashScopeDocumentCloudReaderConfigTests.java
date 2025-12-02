@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
  * @author kevin
  * @since 2025/12/01
  */
-class DashScopeDocumentCloudReaderConfigTest {
+class DashScopeDocumentCloudReaderConfigTests {
 
     @Test
     void testDefaultConfiguration() {
