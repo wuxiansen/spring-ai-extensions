@@ -94,8 +94,16 @@ public class DefaultFileStatusHandler implements FileStatusHandler {
      */
     private FileStatusResult handleParseFailed(DocumentProcessContext context,
                                                ResponseEntity<CommonResponse<QueryFileResponseData>> response) {
-        String errorCode = response.getBody().code();
-        String errorMessage = response.getBody().message();
+        CommonResponse<QueryFileResponseData> body = response.getBody();
+        if (body == null) {
+            logger.error("File parsing failed. FileId: {}. Response body is null.", context.getFileId());
+            String message = String.format(
+                    "File parsing failed - FileId: %s. Response body is null.",
+                    context.getFileId());
+            return FileStatusResult.failure(message);
+        }
+        String errorCode = body.code();
+        String errorMessage = body.message();
 
         logger.error("File parsing failed. FileId: {}, ErrorCode: {}, ErrorMessage: {}",
                      context.getFileId(), errorCode, errorMessage);
