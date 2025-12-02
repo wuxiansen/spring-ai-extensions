@@ -196,8 +196,7 @@ public class DashScopeDocumentCloudReader implements DocumentReader {
         String fileId = dashScopeApi.upload(file, uploadRequest);
 
         if (fileId == null || fileId.trim().isEmpty()) {
-            logger.error("Upload returned empty fileId for file: {}, error message: {}",
-                         file.getName(), "Upload returned empty fileId for file: " + file.getName());
+            logger.error("Upload returned empty fileId for file: {}", file.getName());
             throw new DashScopeDocumentException(ErrorCodeEnum.READER_PARSE_FILE_ERROR);
         }
 
